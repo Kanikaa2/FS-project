@@ -5,7 +5,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
-require('dotenv').config(); // Load .env from project root
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Load .env from project root
 
 const { logger, morganStream } = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');

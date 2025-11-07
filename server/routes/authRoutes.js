@@ -1,58 +1,23 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // your User model
-const passport = require('passport');
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+const { authenticate } = require('../middleware/auth');
+const { validateRegister, validateLogin } = require('../middleware/validation');
+const { authLimiter, oauthLimiter } = require('../middleware/rateLimiter');
 
-class AuthController {
-  // Generate JWT
-  generateJWT(user) {
-    return jwt.sign(
-      { id: user._id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-  }
+// Authentication routes
+router.post('/register', authLimiter, validateRegister, authController.register.bind(authController));
+router.post('/login', authLimiter, validateLogin, authController.login.bind(authController));
+router.post('/logout', authenticate, authController.logout.bind(authController));
+router.post('/refresh', authController.refreshToken.bind(authController));
+router.get('/me', authenticate, authController.getCurrentUser.bind(authController));
 
-  // Initiate OAuth
-  initiateOAuth(req, res, next) {
-    const { provider } = req.params;
-    if (provider === 'google') {
-      passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
-    } else if (provider === 'facebook') {
-      passport.authenticate('facebook', { scope: ['email'] })(req, res, next);
-    } else {
-      res.status(400).json({ message: 'Unsupported provider' });
-    }
-  }
+// OAuth routes
+router.get('/oauth/:provider', oauthLimiter, authController.initiateOAuth.bind(authController));
+router.get('/:provider/callback', oauthLimiter, authController.oauthCallback.bind(authController));
 
-  // OAuth callback
-  oauthCallback(req, res, next) {
-    const { provider } = req.params;
+// Provider linking/unlinking
+router.post('/link/:provider', authenticate, authController.linkProvider.bind(authController));
+router.delete('/unlink/:provider', authenticate, authController.unlinkProvider.bind(authController));
 
-    if (provider === 'google') {
-      passport.authenticate('google', { session: false }, (err, user) => {
-        if (err || !user) return res.status(401).json({ message: 'OAuth login failed' });
-
-        // Generate JWT
-        const token = this.generateJWT(user);
-
-        // Redirect frontend with token
-        const redirectPath = req.query.redirectPath || '/register';
-        res.redirect(`${process.env.FRONTEND_URL}${redirectPath}?token=${token}`);
-      })(req, res, next);
-    } else if (provider === 'facebook') {
-      passport.authenticate('facebook', { session: false }, (err, user) => {
-        if (err || !user) return res.status(401).json({ message: 'OAuth login failed' });
-
-        const token = this.generateJWT(user);
-        const redirectPath = req.query.redirectPath || '/register';
-        res.redirect(`${process.env.FRONTEND_URL}${redirectPath}?token=${token}`);
-      })(req, res, next);
-    } else {
-      res.status(400).json({ message: 'Unsupported provider' });
-    }
-  }
-
-  // Existing methods: register, login, logout, refreshToken, getCurrentUser ...
-}
-
-module.exports = new AuthController();
+module.exports = router;
